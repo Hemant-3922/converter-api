@@ -21,26 +21,55 @@ import java.io.IOException;
 @RequestMapping("/api/convert")
 public class ImagePdfController {
 
-    // ---------- JPG -> PDF ----------
+    // ---------- JPG/PNG -> PDF (Fit into A4) ----------
     @PostMapping("/jpg-to-pdf")
-    public ResponseEntity<byte[]> convertJpgToPdf(@RequestParam("files") MultipartFile[] files) {
+    public ResponseEntity<byte[]> convertJpgToPdf(
+            @RequestParam(value = "files", required = false) MultipartFile[] files,
+            @RequestParam(value = "file", required = false) MultipartFile[] singleFiles) {
+
         try (PDDocument document = new PDDocument();
              ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
 
-            for (MultipartFile file : files) {
-                BufferedImage bimg = ImageIO.read(file.getInputStream());
+            // Merge "files" and "file" into one array
+            MultipartFile[] allFiles;
+            if (files != null && files.length > 0) {
+                allFiles = files;
+            } else if (singleFiles != null && singleFiles.length > 0) {
+                allFiles = singleFiles;
+            } else {
+                return ResponseEntity.badRequest().body("No files uploaded".getBytes());
+            }
 
-                // Create page with same size as image
-                PDPage page = new PDPage(new PDRectangle(bimg.getWidth(), bimg.getHeight()));
+            PDRectangle pageSize = PDRectangle.A4;
+            float pageWidth = pageSize.getWidth();
+            float pageHeight = pageSize.getHeight();
+
+            for (MultipartFile file : allFiles) {
+                BufferedImage bimg = ImageIO.read(file.getInputStream());
+                if (bimg == null) continue;
+
+                // Scale image to fit A4 while preserving aspect ratio
+                float imgWidth = bimg.getWidth();
+                float imgHeight = bimg.getHeight();
+
+                float scale = Math.min(pageWidth / imgWidth, pageHeight / imgHeight);
+                float scaledWidth = imgWidth * scale;
+                float scaledHeight = imgHeight * scale;
+
+                float x = (pageWidth - scaledWidth) / 2;
+                float y = (pageHeight - scaledHeight) / 2;
+
+                PDPage page = new PDPage(pageSize);
                 document.addPage(page);
 
                 PDImageXObject pdImage = LosslessFactory.createFromImage(document, bimg);
 
                 try (PDPageContentStream contentStream = new PDPageContentStream(document, page)) {
-                    contentStream.drawImage(pdImage, 0, 0, bimg.getWidth(), bimg.getHeight());
+                    contentStream.drawImage(pdImage, x, y, scaledWidth, scaledHeight);
                 }
             }
 
+            // Save merged PDF
             document.save(baos);
 
             HttpHeaders headers = new HttpHeaders();
@@ -53,7 +82,7 @@ public class ImagePdfController {
 
         } catch (IOException e) {
             e.printStackTrace();
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.status(500).body(("Error: " + e.getMessage()).getBytes());
         }
     }
 }
