@@ -1,5 +1,6 @@
 package com.mnnit.controller;
 
+import com.mnnit.service.ConversionHistoryService;
 import org.jodconverter.core.DocumentConverter;
 import org.jodconverter.core.office.OfficeException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,7 +19,10 @@ import java.nio.file.Files;
 public class ExcelCsvPdfController {
 
     @Autowired
-    private DocumentConverter converter; // ✅ JODConverter bean (configured with LibreOffice)
+    private DocumentConverter converter; // JODConverter bean (configured with LibreOffice)
+
+    @Autowired
+    private ConversionHistoryService historyService; // Inject history service
 
     // ---------- XLSX → PDF ----------
     @PostMapping("/xlsx-to-pdf")
@@ -32,6 +36,15 @@ public class ExcelCsvPdfController {
         converter.convert(inputFile).to(outputFile).execute();
 
         byte[] pdfBytes = Files.readAllBytes(outputFile.toPath());
+
+        // ✅ Save conversion history
+        historyService.saveHistory(
+                file.getOriginalFilename(),
+                "XLSX → PDF",
+                "pdf",
+                100, // quality not applicable
+                pdfBytes.length
+        );
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=converted.xlsx.pdf")
@@ -51,6 +64,15 @@ public class ExcelCsvPdfController {
         converter.convert(inputFile).to(outputFile).execute();
 
         byte[] pdfBytes = Files.readAllBytes(outputFile.toPath());
+
+        // ✅ Save conversion history
+        historyService.saveHistory(
+                file.getOriginalFilename(),
+                "CSV → PDF",
+                "pdf",
+                100, // quality not applicable
+                pdfBytes.length
+        );
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=converted.csv.pdf")

@@ -22,23 +22,32 @@ public class PdfImageController {
     // ---------- PDF -> JPG (All Pages to ZIP) ----------
     @PostMapping("/pdf-to-jpg")
     public ResponseEntity<byte[]> convertPdfToJpg(@RequestParam("file") MultipartFile file) {
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body("No PDF file uploaded".getBytes());
+        }
+
         try (PDDocument document = PDDocument.load(file.getInputStream());
              ByteArrayOutputStream zipBaos = new ByteArrayOutputStream();
              ZipOutputStream zipOut = new ZipOutputStream(zipBaos)) {
 
+            int pageCount = document.getNumberOfPages();
+            if (pageCount == 0) {
+                return ResponseEntity.badRequest().body("PDF has no pages".getBytes());
+            }
+
             PDFRenderer pdfRenderer = new PDFRenderer(document);
 
-            for (int page = 0; page < document.getNumberOfPages(); page++) {
-                BufferedImage bim = pdfRenderer.renderImageWithDPI(page, 300); // high-quality image
+            for (int page = 0; page < pageCount; page++) {
+                BufferedImage bim = pdfRenderer.renderImageWithDPI(page, 300); // high-quality
 
-                ByteArrayOutputStream imageBaos = new ByteArrayOutputStream();
-                ImageIO.write(bim, "jpg", imageBaos);
+                try (ByteArrayOutputStream imageBaos = new ByteArrayOutputStream()) {
+                    ImageIO.write(bim, "jpg", imageBaos);
 
-                // Add this image to ZIP
-                ZipEntry entry = new ZipEntry("page-" + (page + 1) + ".jpg");
-                zipOut.putNextEntry(entry);
-                zipOut.write(imageBaos.toByteArray());
-                zipOut.closeEntry();
+                    ZipEntry entry = new ZipEntry("page-" + (page + 1) + ".jpg");
+                    zipOut.putNextEntry(entry);
+                    zipOut.write(imageBaos.toByteArray());
+                    zipOut.closeEntry();
+                }
             }
 
             zipOut.finish();
@@ -53,7 +62,7 @@ public class PdfImageController {
 
         } catch (IOException e) {
             e.printStackTrace();
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.status(500).body(("Error processing PDF: " + e.getMessage()).getBytes());
         }
     }
 }

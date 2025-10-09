@@ -1,23 +1,29 @@
 package com.mnnit.controller;
 
+import com.mnnit.service.ConversionHistoryService;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.*;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/convert")
 public class DocxPdfController {
+
+    @Autowired
+    private ConversionHistoryService historyService; // Inject history service
 
     // ---------- DOCX -> PDF ----------
     @PostMapping("/docx-to-pdf")
@@ -59,13 +65,24 @@ public class DocxPdfController {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             pdfDoc.save(baos);
 
+            byte[] pdfBytes = baos.toByteArray();
+
+            // ✅ Save conversion history
+            historyService.saveHistory(
+                    file.getOriginalFilename(), // original file name
+                    "DOCX → PDF",              // conversion type
+                    "pdf",                     // output format
+                    100,                       // quality (use 100 if not applicable)
+                    pdfBytes.length             // file size
+            );
+
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_PDF);
             headers.setContentDispositionFormData("attachment", "converted.pdf");
 
             return ResponseEntity.ok()
                     .headers(headers)
-                    .body(baos.toByteArray());
+                    .body(pdfBytes);
 
         } catch (Exception e) {
             e.printStackTrace();

@@ -1,5 +1,7 @@
 package com.mnnit.controller;
 
+import com.mnnit.model.ConversionHistory;
+import com.mnnit.repository.ConversionHistoryRepository;
 import org.jodconverter.core.DocumentConverter;
 import org.jodconverter.core.office.OfficeException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,10 +22,17 @@ public class PptxPdfController {
     @Autowired
     private DocumentConverter converter; // ✅ LibreOffice/JODConverter bean
 
+    @Autowired
+    private ConversionHistoryRepository historyRepo; // ✅ Optional: save history
+
     // ---------- PPTX -> PDF ----------
     @PostMapping("/pptx-to-pdf")
     public ResponseEntity<byte[]> convertPptxToPdf(@RequestParam("file") MultipartFile file)
             throws IOException, OfficeException {
+
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body("No PPTX file uploaded".getBytes());
+        }
 
         // 🔹 Save input PPTX as temp file
         File inputFile = File.createTempFile("input-", ".pptx");
@@ -37,6 +46,18 @@ public class PptxPdfController {
 
         // 🔹 Read PDF bytes
         byte[] pdfBytes = Files.readAllBytes(outputFile.toPath());
+
+        // ✅ Save conversion history
+        if (historyRepo != null) {
+            ConversionHistory history = new ConversionHistory(
+                    file.getOriginalFilename(),
+                    "PPTX → PDF",
+                    "pdf",
+                    100, // quality not applicable
+                    pdfBytes.length
+            );
+            historyRepo.save(history);
+        }
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=converted.pdf")

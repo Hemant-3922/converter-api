@@ -16,6 +16,8 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/convert")
@@ -27,18 +29,16 @@ public class ImagePdfController {
             @RequestParam(value = "files", required = false) MultipartFile[] files,
             @RequestParam(value = "file", required = false) MultipartFile[] singleFiles) {
 
+        List<MultipartFile> allFiles = new ArrayList<>();
+        if (files != null) allFiles.addAll(List.of(files));
+        if (singleFiles != null) allFiles.addAll(List.of(singleFiles));
+
+        if (allFiles.isEmpty()) {
+            return ResponseEntity.badRequest().body("No files uploaded".getBytes());
+        }
+
         try (PDDocument document = new PDDocument();
              ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-
-            // Merge "files" and "file" into one array
-            MultipartFile[] allFiles;
-            if (files != null && files.length > 0) {
-                allFiles = files;
-            } else if (singleFiles != null && singleFiles.length > 0) {
-                allFiles = singleFiles;
-            } else {
-                return ResponseEntity.badRequest().body("No files uploaded".getBytes());
-            }
 
             PDRectangle pageSize = PDRectangle.A4;
             float pageWidth = pageSize.getWidth();
@@ -51,11 +51,10 @@ public class ImagePdfController {
                 // Scale image to fit A4 while preserving aspect ratio
                 float imgWidth = bimg.getWidth();
                 float imgHeight = bimg.getHeight();
-
                 float scale = Math.min(pageWidth / imgWidth, pageHeight / imgHeight);
+
                 float scaledWidth = imgWidth * scale;
                 float scaledHeight = imgHeight * scale;
-
                 float x = (pageWidth - scaledWidth) / 2;
                 float y = (pageHeight - scaledHeight) / 2;
 
@@ -69,7 +68,6 @@ public class ImagePdfController {
                 }
             }
 
-            // Save merged PDF
             document.save(baos);
 
             HttpHeaders headers = new HttpHeaders();

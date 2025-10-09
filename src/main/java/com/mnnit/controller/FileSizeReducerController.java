@@ -1,8 +1,10 @@
 package com.mnnit.controller;
 
+import com.mnnit.service.ConversionHistoryService;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +24,9 @@ import java.util.Iterator;
 @RestController
 @RequestMapping("/api/compress")
 public class FileSizeReducerController {
+
+    @Autowired
+    private ConversionHistoryService historyService; // ✅ Inject history service
 
     @PostMapping("/pdf-reduce")
     public ResponseEntity<byte[]> compressPdf(
@@ -88,9 +93,20 @@ public class FileSizeReducerController {
         document.save(output);
         document.close();
 
+        byte[] compressedBytes = output.toByteArray();
+
+        // ✅ Save history
+        historyService.saveHistory(
+                file.getOriginalFilename(),
+                "PDF Compression",
+                "pdf",
+                Math.round(quality * 100),
+                compressedBytes.length
+        );
+
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=reduced-" + file.getOriginalFilename())
                 .contentType(MediaType.APPLICATION_PDF)
-                .body(output.toByteArray());
+                .body(compressedBytes);
     }
 }
