@@ -4,7 +4,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
-import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
+import org.apache.pdfbox.pdmodel.graphics.image.JPEGFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.imageio.ImageIO;
+import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -23,9 +24,8 @@ import java.util.List;
 @RequestMapping("/api/convert")
 public class ImagePdfController {
 
-    // ---------- JPG/PNG -> PDF (Fit into A4) ----------
-    @PostMapping("/jpg-to-pdf")
-    public ResponseEntity<byte[]> convertJpgToPdf(
+    @PostMapping("/image-to-pdf")
+    public ResponseEntity<byte[]> convertImageToPdf(
             @RequestParam(value = "files", required = false) MultipartFile[] files,
             @RequestParam(value = "file", required = false) MultipartFile[] singleFiles) {
 
@@ -34,7 +34,7 @@ public class ImagePdfController {
         if (singleFiles != null) allFiles.addAll(List.of(singleFiles));
 
         if (allFiles.isEmpty()) {
-            return ResponseEntity.badRequest().body("No files uploaded".getBytes());
+            return ResponseEntity.badRequest().body("No image files uploaded.".getBytes());
         }
 
         try (PDDocument document = new PDDocument();
@@ -45,14 +45,27 @@ public class ImagePdfController {
             float pageHeight = pageSize.getHeight();
 
             for (MultipartFile file : allFiles) {
-                BufferedImage bimg = ImageIO.read(file.getInputStream());
-                if (bimg == null) continue;
+                BufferedImage inputImage = ImageIO.read(file.getInputStream());
+                if (inputImage == null) continue;
 
-                // Scale image to fit A4 while preserving aspect ratio
-                float imgWidth = bimg.getWidth();
-                float imgHeight = bimg.getHeight();
+                // Convert to JPG (even if PNG, BMP, etc.)
+                BufferedImage jpgImage = new BufferedImage(
+                        inputImage.getWidth(),
+                        inputImage.getHeight(),
+                        BufferedImage.TYPE_INT_RGB
+                );
+
+                // Draw white background for transparency handling
+                Graphics2D g2d = jpgImage.createGraphics();
+                g2d.setColor(Color.WHITE);
+                g2d.fillRect(0, 0, jpgImage.getWidth(), jpgImage.getHeight());
+                g2d.drawImage(inputImage, 0, 0, null);
+                g2d.dispose();
+
+                // Scale to fit A4
+                float imgWidth = jpgImage.getWidth();
+                float imgHeight = jpgImage.getHeight();
                 float scale = Math.min(pageWidth / imgWidth, pageHeight / imgHeight);
-
                 float scaledWidth = imgWidth * scale;
                 float scaledHeight = imgHeight * scale;
                 float x = (pageWidth - scaledWidth) / 2;
@@ -61,7 +74,7 @@ public class ImagePdfController {
                 PDPage page = new PDPage(pageSize);
                 document.addPage(page);
 
-                PDImageXObject pdImage = LosslessFactory.createFromImage(document, bimg);
+                PDImageXObject pdImage = JPEGFactory.createFromImage(document, jpgImage);
 
                 try (PDPageContentStream contentStream = new PDPageContentStream(document, page)) {
                     contentStream.drawImage(pdImage, x, y, scaledWidth, scaledHeight);
@@ -80,7 +93,8 @@ public class ImagePdfController {
 
         } catch (IOException e) {
             e.printStackTrace();
-            return ResponseEntity.status(500).body(("Error: " + e.getMessage()).getBytes());
+            return ResponseEntity.internalServerError()
+                    .body(("Error: " + e.getMessage()).getBytes());
         }
     }
 }
